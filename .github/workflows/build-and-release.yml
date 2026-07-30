@@ -27,18 +27,30 @@ jobs:
           mkdir -p AppDir/usr/bin
           
           wget -qO dbeaver.tar.gz "https://dbeaver.io/files/dbeaver-ce-latest-linux.gtk.x86_64.tar.gz"
-          
           tar -xzf dbeaver.tar.gz -C AppDir/usr/bin
           rm dbeaver.tar.gz
+
+          # --- FIX ECLIPSE LAUNCHER ---
+          # Creiamo un wrapper che passa i percorsi assoluti a DBeaver.
+          # Questo impedisce ad anylinux.so di confondere l'eseguibile.
+          cat << 'EOF' > AppDir/usr/bin/dbeaver-launcher
+          #!/bin/bash
+          HERE="$(dirname "$(readlink -f "$0")")"
+          cd "$HERE/dbeaver"
+          # Forziamo la directory di installazione (-install) e la Java VM (-vm)
+          exec -a "$HERE/dbeaver/dbeaver" "$HERE/dbeaver/dbeaver" -install "$HERE/dbeaver" -vm "$HERE/dbeaver/jre/bin/java" "$@"
+          EOF
+          chmod +x AppDir/usr/bin/dbeaver-launcher
 
           mkdir -p AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/48x48/apps
           cp AppDir/usr/bin/dbeaver/icon.xpm AppDir/usr/share/icons/hicolor/48x48/apps/dbeaver.xpm
 
+          # Aggiorniamo l'Exec per puntare al nostro launcher protetto
           cat << EOF > AppDir/usr/share/applications/dbeaver.desktop
           [Desktop Entry]
           Type=Application
           Name=DBeaver Community
-          Exec=dbeaver
+          Exec=dbeaver-launcher
           Icon=dbeaver
           Terminal=false
           Categories=Development;Database;
@@ -55,7 +67,8 @@ jobs:
           export OUTPATH="$(pwd)"
           export OUTNAME="DBeaver-x86_64.AppImage"
 
-          ./anylinux-appimages/useful-tools/quick-sharun.sh AppDir/usr/bin/dbeaver/dbeaver
+          # Tracciamo lo script wrapper invece del binario diretto
+          ./anylinux-appimages/useful-tools/quick-sharun.sh AppDir/usr/bin/dbeaver-launcher
 
           ./anylinux-appimages/useful-tools/quick-sharun.sh --make-appimage
 
