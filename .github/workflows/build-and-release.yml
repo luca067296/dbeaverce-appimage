@@ -1,0 +1,68 @@
+name: Build DBeaver AppImage Release
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: 
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    container: archlinux:latest 
+
+    steps:
+      - name: Install System Dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm base-devel git wget xorg-server-xvfb patchelf zsync awk
+
+      - name: Build DBeaver AppImage
+        run: |
+          #!/bin/bash
+          set -e
+
+          mkdir -p AppDir/usr/bin
+          
+          wget -qO dbeaver.tar.gz "https://dbeaver.io/files/dbeaver-ce-latest-linux.gtk.x86_64.tar.gz"
+          
+          tar -xzf dbeaver.tar.gz -C AppDir/usr/bin
+          rm dbeaver.tar.gz
+
+          mkdir -p AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/48x48/apps
+          cp AppDir/usr/bin/dbeaver/icon.xpm AppDir/usr/share/icons/hicolor/48x48/apps/dbeaver.xpm
+
+          cat << EOF > AppDir/usr/share/applications/dbeaver.desktop
+          [Desktop Entry]
+          Type=Application
+          Name=DBeaver Community
+          Exec=dbeaver
+          Icon=dbeaver
+          Terminal=false
+          Categories=Development;Database;
+          EOF
+
+          git clone https://github.com/pkgforge-dev/anylinux-appimages.git
+          chmod +x ./anylinux-appimages/useful-tools/quick-sharun.sh
+          chmod +x ./anylinux-appimages/useful-tools/get-debloated-pkgs.sh
+
+          ./anylinux-appimages/useful-tools/get-debloated-pkgs.sh --add-common --prefer-nano
+
+          export ICON="$(pwd)/AppDir/usr/share/icons/hicolor/48x48/apps/dbeaver.xpm"
+          export DESKTOP="$(pwd)/AppDir/usr/share/applications/dbeaver.desktop"
+          export OUTPATH="$(pwd)"
+          export OUTNAME="DBeaver-x86_64.AppImage"
+
+          ./anylinux-appimages/useful-tools/quick-sharun.sh AppDir/usr/bin/dbeaver/dbeaver
+
+          ./anylinux-appimages/useful-tools/quick-sharun.sh --make-appimage
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: continuous
+          name: "DBeaver Continuous Build"
+          files: "*.AppImage"
+          prerelease: true
